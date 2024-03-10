@@ -1,23 +1,34 @@
 import base64
 import os
+import pickle
 
 import numpy as np
 import onnxruntime as rt
-import MIDI
+from background_task import background
+from django.utils import timezone
 
-from euphonia.generator.engine.midi_tokenizer import MIDITokenizer
-import tqdm
+from generator.engine import MIDI
 
 print(os.getcwd())
 
+from generator.engine.midi_tokenizer import MIDITokenizer
+import tqdm
+
+
 tokenizer = MIDITokenizer()
+# model_base_path = "model_base_touhou.onnx"
+# model_token_path = "model_token_touhou.onnx"
 providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
-model_base_path = "euphonia/generator/engine/model_base_touhou.onnx"
-model_token_path = "euphonia/generator/engine/model_token_touhou.onnx"
-model_base_path = "model_base_touhou.onnx"
-model_token_path = "model_token_touhou.onnx"
-model_base = rt.InferenceSession(model_base_path, providers=providers)
-model_token = rt.InferenceSession(model_token_path, providers=providers)
+try:
+    model_base_path = "euphonia/generator/engine/model_base_touhou.onnx"
+    model_token_path = "euphonia/generator/engine/model_token_touhou.onnx"
+    model_base = rt.InferenceSession(model_base_path, providers=providers)
+    model_token = rt.InferenceSession(model_token_path, providers=providers)
+except Exception:
+    model_base_path = "generator/engine/model_base_touhou.onnx"
+    model_token_path = "generator/engine/model_token_touhou.onnx"
+    model_base = rt.InferenceSession(model_base_path, providers=providers)
+    model_token = rt.InferenceSession(model_token_path, providers=providers)
 
 
 def softmax(x, axis):
@@ -44,7 +55,7 @@ def sample_top_p_k(probs, p, k):
     return next_token
 
 
-def run(mid, gen_events, temperature=1, top_p=0.98, top_k=12, disable_channels=None, disable_patch_change=False):
+def run(mid, gen_events, path_to_save, temperature=1, top_p=0.98, top_k=12, disable_channels=None, disable_patch_change=False):
     """
 
     :param mid: input midi as binary
@@ -56,6 +67,7 @@ def run(mid, gen_events, temperature=1, top_p=0.98, top_k=12, disable_channels=N
     :param disable_patch_change:
     :return:
     """
+
     mid_seq = []
     mid = tokenizer.tokenize(MIDI.midi2score(mid))
     mid = np.asarray(mid, dtype=np.int64)
@@ -69,13 +81,17 @@ def run(mid, gen_events, temperature=1, top_p=0.98, top_k=12, disable_channels=N
     for i, token_seq in enumerate(generator):
         mid_seq.append(token_seq)
     midi = tokenizer.detokenize(mid_seq)
-    print(midi)
-    with open(f"../../cache/output.mid", 'wb') as f:
+    with open(path_to_save, 'wb') as f:
         f.write(MIDI.score2midi(midi))
 
 
 def generate(prompt=None, max_len=512, temp=1.0, top_p=0.98, top_k=20,
              disable_patch_change=False, disable_control_change=False, disable_channels=None):
+    print(os.getcwd())
+    model_base_path = "euphonia/generator/engine/model_base_touhou.onnx"
+    model_token_path = "euphonia/generator/engine/model_token_touhou.onnx"
+    model_base = rt.InferenceSession(model_base_path, providers=providers)
+    model_token = rt.InferenceSession(model_token_path, providers=providers)
     if disable_channels is not None:
         disable_channels = [tokenizer.parameter_ids["channel"][c] for c in disable_channels]
     else:
@@ -140,9 +156,21 @@ def generate(prompt=None, max_len=512, temp=1.0, top_p=0.98, top_k=20,
                 break
 
 
+def decode_base64_to_binary(encoding: str) -> bytes:
+    data = encoding.rsplit(",", 1)[-1]
+    return base64.b64decode(data)
+
+
+@background(schedule=0)
+def generate_from_binary_str(bin: str, count, token: str):
+    midi = base64.b64decode(bin)
+    path_to_save = f"euphonia/cache/{token}.mid"
+    run(midi, count, path_to_save)
+
+
 if __name__ == '__main__':
     print(os.getcwd())
     input_midi_path = "../../cache/input.mid"
     with open(input_midi_path, "rb") as data:
         numpy_data = data.read()
-    run(numpy_data, 10)
+    run(numpy_data, 10,)

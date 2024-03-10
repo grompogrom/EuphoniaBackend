@@ -21,5 +21,5 @@ from generator import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path("generate/", views.index),
+    path("generate/", views.upload_midi),
 ]
