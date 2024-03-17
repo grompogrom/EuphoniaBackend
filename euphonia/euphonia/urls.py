@@ -22,4 +22,5 @@ from generator import views
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("generate/", views.upload_midi),
+    path('get/<str:token>/', views.get_generated),
 ]

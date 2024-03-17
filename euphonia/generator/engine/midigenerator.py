@@ -1,34 +1,24 @@
 import base64
 import os
-import pickle
 
 import numpy as np
 import onnxruntime as rt
+import tqdm
 from background_task import background
-from django.utils import timezone
 
 from generator.engine import MIDI
-
-print(os.getcwd())
-
 from generator.engine.midi_tokenizer import MIDITokenizer
-import tqdm
-
+from generator.engine.tools import find_file
 
 tokenizer = MIDITokenizer()
-# model_base_path = "model_base_touhou.onnx"
-# model_token_path = "model_token_touhou.onnx"
 providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
-try:
-    model_base_path = "euphonia/generator/engine/model_base_touhou.onnx"
-    model_token_path = "euphonia/generator/engine/model_token_touhou.onnx"
-    model_base = rt.InferenceSession(model_base_path, providers=providers)
-    model_token = rt.InferenceSession(model_token_path, providers=providers)
-except Exception:
-    model_base_path = "generator/engine/model_base_touhou.onnx"
-    model_token_path = "generator/engine/model_token_touhou.onnx"
-    model_base = rt.InferenceSession(model_base_path, providers=providers)
-    model_token = rt.InferenceSession(model_token_path, providers=providers)
+print(os.getcwd())
+
+
+model_base_path = find_file("model_base_touhou.onnx")
+model_token_path = find_file("model_token_touhou.onnx")
+model_base = rt.InferenceSession(model_base_path, providers=providers)
+model_token = rt.InferenceSession(model_token_path, providers=providers)
 
 
 def softmax(x, axis):
@@ -87,11 +77,6 @@ def run(mid, gen_events, path_to_save, temperature=1, top_p=0.98, top_k=12, disa
 
 def generate(prompt=None, max_len=512, temp=1.0, top_p=0.98, top_k=20,
              disable_patch_change=False, disable_control_change=False, disable_channels=None):
-    print(os.getcwd())
-    model_base_path = "euphonia/generator/engine/model_base_touhou.onnx"
-    model_token_path = "euphonia/generator/engine/model_token_touhou.onnx"
-    model_base = rt.InferenceSession(model_base_path, providers=providers)
-    model_token = rt.InferenceSession(model_token_path, providers=providers)
     if disable_channels is not None:
         disable_channels = [tokenizer.parameter_ids["channel"][c] for c in disable_channels]
     else:
@@ -164,7 +149,7 @@ def decode_base64_to_binary(encoding: str) -> bytes:
 @background(schedule=0)
 def generate_from_binary_str(bin: str, count, token: str):
     midi = base64.b64decode(bin)
-    path_to_save = f"euphonia/cache/{token}.mid"
+    path_to_save = f"cache/{token}.mid"
     run(midi, count, path_to_save)
 
 
